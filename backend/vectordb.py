@@ -103,6 +103,23 @@ def query_vector(query_text, top_k=3):
     return results
 
 
+
+def similarity_search(query_embedding, top_k=3, metadata_filter=None):
+    """
+    Query vector DB using a pre-computed embedding.
+    Returns matching text + metadata.
+    """
+    model = get_model()
+    query_embedding = model.encode(query_embedding).tolist()
+ 
+    results = collection.query(
+        query_embeddings=[query_embedding],
+        n_results=top_k
+    )
+
+    return results
+
+
 # -----------------------------------------------------------------------------
 # DELETE ENTIRE COLLECTION (optional utility)
 # -----------------------------------------------------------------------------

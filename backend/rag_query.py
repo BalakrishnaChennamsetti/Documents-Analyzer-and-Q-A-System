@@ -4,6 +4,9 @@ from pydantic import BaseModel
 from backend.vectordb import similarity_search
 from backend.web_search import web_search
 import uvicorn
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="RAG Query API")
 
@@ -21,13 +24,15 @@ async def query_endpoint(qin: QueryIn):
     if qin.sentiment_filter:
         metadata_filter = {"sentiment": qin.sentiment_filter}
 
-    docs = similarity_search(q, k=k, metadata_filter=metadata_filter)
+    docs = similarity_search(q, top_k=k, metadata_filter=metadata_filter)
 
     if not docs or len(docs) == 0:
         web = web_search(q)
         return {"answer": None, "source": "web", "web": web}
-
-    combined = "\n\n".join([d["text"] for d in docs])
+    print([d for d in [docs]])
+    docs = docs["documents"]
+    flat_docs = [d[0] for d in docs]
+    combined = "\n\n".join(flat_docs)
     short = combined[:3000]
     return {"answer": short, "source": "vector_db", "docs": docs}
 

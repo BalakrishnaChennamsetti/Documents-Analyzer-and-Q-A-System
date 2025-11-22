@@ -1,19 +1,28 @@
 # backend/ingest_pdf.py
 import fitz  # PyMuPDF
 from backend.vectordb import add_documents
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def extract_pdf_pages(pdf_bytes):
     """Generator that yields text from each PDF page."""
     try:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        logger.info("PDF file opened successfully") 
+
     except Exception as e:
         raise ValueError(f"Failed to open PDF: {str(e)}")
 
     try:
         for page in doc:
+            logger.info(f"Extracted text from page {page.number}")
             yield page.get_text("text")
     finally:
         doc.close()
+        logger.info("PDF file closed")
 
 
 def chunk_generator(text, chunk_size=100, overlap=20):
@@ -21,13 +30,14 @@ def chunk_generator(text, chunk_size=100, overlap=20):
     if not text:
         return
 
-    length = len(text)
-    start = 0
-
-    while start < length:
-        end = min(start + chunk_size, length)
-        yield text[start:end]
-        start = end - overlap if end - overlap > 0 else end
+    RecursiveCharacterTextSplitter_instance = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=overlap
+    )
+    logger.info("Initialized RecursiveCharacterTextSplitter")
+    for chunk in RecursiveCharacterTextSplitter_instance.split_text(text):
+        logger.info(f"Generated chunk of length {len(chunk)}")
+        yield chunk
 
 
 def insert_chunks_to_db(chunks, metadata, batch_size=2):
@@ -61,11 +71,15 @@ def ingest_pdf_file(file_bytes, metadata, chunk_size=100, overlap=20, batch_size
         for page_text in extract_pdf_pages(file_bytes):
             if not page_text.strip():
                 continue
-            chunks = chunk_generator(page_text, chunk_size=chunk_size, overlap=overlap)
+            logger.info(f"Processing page text \n {page_text}")
+            
+            chunks = list(chunk_generator(page_text, chunk_size=chunk_size, overlap=overlap))
+            logger.info(f"Generated {len(chunks)} chunks from page text")
             for chunk in chunks:
                 try:
                     insert_chunks_to_db([chunk], metadata, batch_size=batch_size)
                     total_chunks += 1
+                    logger.info(f"Inserted chunk into DB: {chunk[:30]}...")  # Log first 30 chars of chunk
                 except MemoryError:
                     return {
                         "status": "error",
